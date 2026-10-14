@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="WAAGE_LAB – browserbasierte Messumgebung für chemische Versuche mit serieller Waage" />
+  <title>WAAGE_LAB – Chemie messen, auswerten, mit KI hinterfragen</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="card hero">
+      <div>
+        <p class="eyebrow">CHEMIE mit KI · Reales Experiment zuerst</p>
+        <h1>WAAGE_LAB</h1>
+        <p class="subtitle">Preiswerte serielle Waage → reale Messdaten → transparente Auswertung → KI als wissenschaftlicher Coach.</p>
+      </div>
+      <div class="version">
+        <span class="badge">v0.1.0</span>
+        <div>Prototyp · BrauseLab</div>
+      </div>
+    </header>
+
+    <section class="card flow" aria-label="Didaktischer Ablauf">
+      <div class="flow-step"><span>1</span><strong>Vorhersagen</strong><small>eigene Hypothese</small></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><span>2</span><strong>Real messen</strong><small>Waage / Rohdaten</small></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><span>3</span><strong>Auswerten</strong><small>klassische Kennwerte</small></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step ai"><span>4</span><strong>KI-Coach</strong><small>begründen & kritisieren</small></div>
+    </section>
+
+    <nav class="card tabs" aria-label="Arbeitsbereiche">
+      <button class="tab active" data-view="setup">Versuch vorbereiten</button>
+      <button class="tab" data-view="prediction">Prognose</button>
+      <button class="tab" data-view="measure">Reale Messung</button>
+      <button class="tab" data-view="analysis">Auswertung & KI</button>
+    </nav>
+
+    <section id="setup" class="view">
+      <div class="workspace">
+        <aside class="card">
+          <div class="panelhead"><h2>Versuchs-Preset</h2></div>
+          <div class="panelbody formgrid">
+            <label>Versuch
+              <select id="preset">
+                <option value="brause" selected>Brausetablette – CO₂-Massenverlust</option>
+                <option value="free">Freie Massen-Zeit-Messung</option>
+              </select>
+            </label>
+            <label>Tablettenmasse / g
+              <input id="tabletMass" type="number" min="0" step="0.01" value="6.13" />
+              <span class="note">Jede Tablette einzeln wiegen.</span>
+            </label>
+            <label>Wassermasse / g
+              <input id="waterMass" type="number" min="0" step="0.1" placeholder="optional" />
+            </label>
+            <label>Starttemperatur / °C
+              <input id="temperature" type="number" step="0.1" placeholder="optional" />
+              <span class="note">Später automatisch über zweiten seriellen Sensor möglich.</span>
+            </label>
+            <label>Tablettenform
+              <select id="tabletForm">
+                <option value="ganz" selected>ganz</option>
+                <option value="zerkleinert">zerkleinert</option>
+              </select>
+            </label>
+            <label>Notiz
+              <input id="note" type="text" placeholder="z. B. größerer PET-Becher, Kunststoffrührstab" />
+            </label>
+          </div>
+        </aside>
+
+        <section class="card">
+          <div class="panelhead"><h2>Messprinzip</h2></div>
+          <div class="panelbody">
+            <div class="principle-grid">
+              <div class="principle-card"><strong>Messgröße</strong><span>m(t) der offenen Apparatur</span></div>
+              <div class="principle-card"><strong>Auswertung</strong><span>Δm(t) = m₀ − m(t)</span></div>
+              <div class="principle-card"><strong>Interpretation</strong><span>Masse, die das System verlässt</span></div>
+              <div class="principle-card"><strong>Grenze</strong><span>nicht direkt die CO₂-Bildungsrate</span></div>
+            </div>
+            <div class="info"><strong>Standardaufbau BrauseLab:</strong> großer PET-Becher, niedriger Füllstand, leichter Kunststoffrührstab von Beginn an im gewogenen System. Während der spontanen Messphase nicht eingreifen.</div>
+            <div class="warning"><strong>KI bleibt hier bewusst außen vor.</strong> Versuchsfrage, Hypothese und Messaufbau entstehen vor der KI-Auswertung.</div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="prediction" class="view" hidden>
+      <div class="workspace">
+        <aside class="card">
+          <div class="panelhead"><h2>Eigene Prognose</h2></div>
+          <div class="panelbody formgrid">
+            <label>Erwarteter Massenverlust / g
+              <input id="predFinal" type="number" min="0.01" max="5" step="0.01" placeholder="z. B. 0.70" />
+            </label>
+            <label>Erwartete Zeit bis 90 % / s
+              <input id="predT90" type="number" min="1" max="600" step="1" placeholder="z. B. 60" />
+            </label>
+            <label>Begründung in einem Satz
+              <textarea id="predictionReason" rows="4" placeholder="Warum erwartest du diesen Verlauf?"></textarea>
+            </label>
+            <div class="buttons">
+              <button id="savePrediction" class="primary">Prognose festhalten</button>
+              <button id="clearPrediction" class="secondary">Löschen</button>
+            </div>
+            <div id="predictionStatus" class="status-line">Noch keine Prognose gespeichert.</div>
+          </div>
+        </aside>
+        <section class="card">
+          <div class="panelhead"><h2>Prognosekurve</h2></div>
+          <div class="panelbody">
+            <div class="chartwrap"><canvas id="predictionCanvas" aria-label="Prognose des Massenverlusts gegen die Zeit"></canvas></div>
+            <div class="info">Die Prognose wird später unverändert über die reale Messkurve gelegt. Es gibt <strong>keinen nachträglichen Fit</strong>.</div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="measure" class="view" hidden>
+      <div class="workspace measure-workspace">
+        <aside class="card">
+          <div class="panelhead"><h2>Waage verbinden</h2></div>
+          <div class="panelbody">
+            <div class="instrument-display">
+              <div class="display-label">aktuelle Masse</div>
+              <div id="liveMass" class="display-value">–</div>
+              <div id="serialMeta" class="display-meta">nicht verbunden</div>
+            </div>
+            <div class="buttons">
+              <button id="connectSerial" class="primary">Serielle Waage verbinden</button>
+              <button id="disconnectSerial" class="secondary" disabled>Trennen</button>
+            </div>
+            <div class="buttons">
+              <button id="loadDemo" class="secondary">Demo: Realversuch 03 laden</button>
+              <label class="file-button">Tera-Term-Log importieren<input id="logFile" type="file" accept=".log,.txt,.csv" /></label>
+            </div>
+            <div id="serialSupport" class="status-line"></div>
+
+            <h3>Start vorbereiten</h3>
+            <label>Basis-Masse: Becher + Wasser + Rührstab / g
+              <input id="baselineMass" type="number" step="0.01" placeholder="aus Live-Daten übernehmen" />
+            </label>
+            <div class="buttons">
+              <button id="captureBaseline" class="secondary">letzte 3 s mitteln</button>
+            </div>
+            <div class="formula-box">m₀ = Basis + Tablette = <strong id="m0Value">–</strong></div>
+            <div class="buttons">
+              <button id="startRun" class="primary">Messlauf starten</button>
+              <button id="stopRun" class="secondary" disabled>Messlauf beenden</button>
+              <button id="resetRun" class="secondary">Zurücksetzen</button>
+            </div>
+            <div id="runStatus" class="status-line">Bereit.</div>
+          </div>
+        </aside>
+
+        <section class="card">
+          <div class="panelhead split"><h2>Realer Massenverlust</h2><span id="sourceBadge" class="status-chip">keine Daten</span></div>
+          <div class="panelbody">
+            <div class="chartwrap live-chart"><canvas id="liveCanvas" aria-label="Reale und prognostizierte Massenverlustkurve"></canvas></div>
+            <div class="metrics">
+              <div class="metric"><div class="mlabel">Messzeit</div><div id="metricTime" class="mvalue">–</div></div>
+              <div class="metric"><div class="mlabel">Δm aktuell</div><div id="metricDm" class="mvalue">–</div></div>
+              <div class="metric"><div class="mlabel">Messpunkte</div><div id="metricPoints" class="mvalue">0</div></div>
+              <div class="metric"><div class="mlabel">Datenrate</div><div id="metricHz" class="mvalue">–</div></div>
+            </div>
+            <details><summary>Rohdaten anzeigen</summary><div class="table-wrap"><table><thead><tr><th>t / s</th><th>m / g</th><th>Δm / g</th></tr></thead><tbody id="rawTable"></tbody></table></div></details>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="analysis" class="view" hidden>
+      <div class="workspace">
+        <aside class="card">
+          <div class="panelhead"><h2>Transparente Auswertung</h2></div>
+          <div class="panelbody">
+            <div class="analysis-metrics">
+              <div class="metric"><div class="mlabel">Δm∞</div><div id="aFinal" class="mvalue">–</div></div>
+              <div class="metric"><div class="mlabel">t₅₀</div><div id="aT50" class="mvalue">–</div></div>
+              <div class="metric"><div class="mlabel">t₉₀</div><div id="aT90" class="mvalue">–</div></div>
+              <div class="metric"><div class="mlabel">t₉₅</div><div id="aT95" class="mvalue">–</div></div>
+            </div>
+            <div class="buttons">
+              <button id="exportCsv" class="secondary" disabled>Messdaten als CSV</button>
+              <button id="makeAiPackage" class="primary" disabled>KI-Analysepaket erzeugen</button>
+            </div>
+            <div class="info"><strong>Diese Kennwerte berechnet die App selbst.</strong> Dafür wird keine KI benötigt.</div>
+          </div>
+        </aside>
+
+        <section class="card ai-card">
+          <div class="panelhead split"><h2>KI-Coach</h2><span class="status-chip ai-chip">erst nach den Daten</span></div>
+          <div class="panelbody">
+            <p class="lead">Die KI erhält Messbedingungen, Rohdaten-Kennwerte und die eigene Prognose. Ihr Auftrag ist nicht „Lösung liefern“, sondern <strong>Begründen, Grenzen erkennen und Schlussfolgerungen prüfen</strong>.</p>
+            <textarea id="aiPackage" rows="17" readonly placeholder="Nach Abschluss einer Messung kann hier ein datenbasiertes Analysepaket erzeugt werden."></textarea>
+            <div class="buttons">
+              <button id="copyAiPackage" class="secondary" disabled>Analysepaket kopieren</button>
+              <button id="openChatGPT" class="secondary" disabled>ChatGPT öffnen</button>
+            </div>
+            <div class="ai-principles">
+              <strong>Regeln für den KI-Coach</strong>
+              <span>Messwert ≠ Interpretation</span>
+              <span>keine erfundenen Daten</span>
+              <span>„schneller“ ≠ „mehr“</span>
+              <span>Systemgrenzen und Störgrößen mitdenken</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <footer class="footer">WAAGE_LAB · CHEMIE mit KI · Lehrkräfte steuern. SchülerInnen denken. KI unterstützt.</footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
