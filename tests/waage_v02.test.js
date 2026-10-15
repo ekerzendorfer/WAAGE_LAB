@@ -60,7 +60,7 @@ assert.equal(meta.points.length,80);
 assert.equal(meta.meta.tabletForm,'ganz');
 assert(Number.isFinite(meta.metrics.t90));
 const legacy=evalIn('importCsvRun')(csv.replace('# WAAGE_LAB v0.2.0','# WAAGE_LAB')
-  .replace('# analysis_from_s=5\\n',''),'CSV v0.1');
+  .replace('# analysis_from_s=5\n',''),'CSV v0.1');
 assert.equal(legacy.meta.analysisFrom,0,'Alte CSV ohne Auswertegrenze muss weiterhin lesbar sein');
 assert(Number.isFinite(legacy.metrics.final));
 const meta2=evalIn('importCsvRun')(csv.replace('temperature_C=22.4','temperature_C=28.0'),'CSV2');
