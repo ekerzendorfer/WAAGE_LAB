@@ -16,7 +16,7 @@
         <p class="subtitle">Preiswerte serielle Waage → reale Messdaten → transparente Auswertung → KI als wissenschaftlicher Coach.</p>
       </div>
       <div class="version">
-        <span class="badge">v0.1.0</span>
+        <span class="badge">v0.2.0</span>
         <div>Prototyp · BrauseLab</div>
       </div>
     </header>
@@ -36,6 +36,7 @@
       <button class="tab" data-view="prediction">Prognose</button>
       <button class="tab" data-view="measure">Reale Messung</button>
       <button class="tab" data-view="analysis">Auswertung & KI</button>
+      <button class="tab" data-view="compare">Läufe vergleichen</button>
     </nav>
 
     <section id="setup" class="view">
@@ -53,8 +54,13 @@
               <input id="tabletMass" type="number" min="0" step="0.01" value="6.13" />
               <span class="note">Jede Tablette einzeln wiegen.</span>
             </label>
+            <label>Leermasse des trockenen Bechers / g
+              <input id="beakerMass" type="number" min="0" step="0.01" placeholder="einmal je Versuchsserie wiegen" />
+              <span class="note">500-mL-Becher ohne Rührstab; für die Serie unverändert.</span>
+            </label>
             <label>Wassermasse / g
-              <input id="waterMass" type="number" min="0" step="0.1" placeholder="optional" />
+              <input id="waterMass" type="number" min="0" step="0.01" placeholder="wird aus Basis − Leermasse berechnet" />
+              <span id="waterMassHint" class="note">Sobald Leermasse und Basis vorliegen, wird die Wassermasse automatisch errechnet.</span>
             </label>
             <label>Starttemperatur / °C
               <input id="temperature" type="number" step="0.1" placeholder="optional" />
@@ -63,11 +69,15 @@
             <label>Tablettenform
               <select id="tabletForm">
                 <option value="ganz" selected>ganz</option>
-                <option value="zerkleinert">zerkleinert</option>
+                <option value="halbiert">halbiert</option>
+                <option value="geviertelt">geviertelt</option>
+                <option value="grob zerkleinert">grob zerkleinert</option>
+                <option value="fein zerkleinert">fein zerkleinert</option>
+                <option value="zerkleinert">zerkleinert (Altbestand)</option>
               </select>
             </label>
             <label>Notiz
-              <input id="note" type="text" placeholder="z. B. größerer PET-Becher, Kunststoffrührstab" />
+              <input id="note" type="text" placeholder="z. B. Bechergröße, Spritzer, Besonderheiten" />
             </label>
           </div>
         </aside>
@@ -81,7 +91,7 @@
               <div class="principle-card"><strong>Interpretation</strong><span>Masse, die das System verlässt</span></div>
               <div class="principle-card"><strong>Grenze</strong><span>nicht direkt die CO₂-Bildungsrate</span></div>
             </div>
-            <div class="info"><strong>Standardaufbau BrauseLab:</strong> großer PET-Becher, niedriger Füllstand, leichter Kunststoffrührstab von Beginn an im gewogenen System. Während der spontanen Messphase nicht eingreifen.</div>
+            <div class="info"><strong>Standardaufbau BrauseLab:</strong> 500-mL-Becher, etwa 200 g Wasser, kein Rührstab. Leeren trockenen Becher einmalig wiegen; Wasser gravimetrisch über die Basis bestimmen. Während der spontanen Messphase nicht eingreifen.</div>
             <div class="warning"><strong>KI bleibt hier bewusst außen vor.</strong> Versuchsfrage, Hypothese und Messaufbau entstehen vor der KI-Auswertung.</div>
           </div>
         </section>
@@ -140,7 +150,7 @@
             <div id="serialSupport" class="status-line"></div>
 
             <h3>Start vorbereiten</h3>
-            <label>Basis-Masse: Becher + Wasser + Rührstab / g
+            <label>Basis-Masse: Becher + Wasser / g
               <input id="baselineMass" type="number" step="0.01" placeholder="aus Live-Daten übernehmen" />
             </label>
             <div class="buttons">
@@ -148,10 +158,19 @@
             </div>
             <div class="formula-box">m₀ = Basis + Tablette = <strong id="m0Value">–</strong></div>
             <div class="buttons">
-              <button id="startRun" class="primary">Messlauf starten</button>
+              <button id="startRun" class="primary">Vorlauf aufzeichnen</button>
+              <button id="markThrow" class="primary" disabled>Einwurf markieren (t = 0)</button>
               <button id="stopRun" class="secondary" disabled>Messlauf beenden</button>
               <button id="resetRun" class="secondary">Zurücksetzen</button>
             </div>
+            <div class="info" id="conditionsSummary">Bedingungen prüfen: noch kein Messlauf vorbereitet.</div>
+            <label>Quantitativ auswerten ab / s
+              <input id="analysisFrom" type="number" min="0" max="30" step="0.5" value="5" />
+              <span class="note">Frühphase bleibt vollständig in den Rohdaten. Kennwerte ignorieren mögliche Störspitzen bis zu diesem Zeitpunkt.</span>
+            </label>
+            <label>Einwurfzeit im Tera-Term-Log / s ab Logbeginn (optional)
+              <input id="logEventOffset" type="number" min="0" step="0.1" placeholder="sonst automatische Näherung" />
+            </label>
             <div id="runStatus" class="status-line">Bereit.</div>
           </div>
         </aside>
@@ -160,6 +179,10 @@
           <div class="panelhead split"><h2>Realer Massenverlust</h2><span id="sourceBadge" class="status-chip">keine Daten</span></div>
           <div class="panelbody">
             <div class="chartwrap live-chart"><canvas id="liveCanvas" aria-label="Reale und prognostizierte Massenverlustkurve"></canvas></div>
+            <details open><summary>Einwurf und Einschwingphase – ungeglättetes Rohsignal m(t)</summary>
+              <div class="chartwrap transient-chart"><canvas id="transientCanvas" aria-label="Ungeglättetes Massesignal rund um den Einwurf"></canvas></div>
+              <p class="note">t = 0: manueller Einwurfmarker. Schattierung: bis zum eingestellten Auswertungsbeginn. Die Waage erfasst den Massenverlust des offenen Systems, nicht die chemische CO₂-Bildungsrate.</p>
+            </details>
             <div class="metrics">
               <div class="metric"><div class="mlabel">Messzeit</div><div id="metricTime" class="mvalue">–</div></div>
               <div class="metric"><div class="mlabel">Δm aktuell</div><div id="metricDm" class="mvalue">–</div></div>
@@ -212,8 +235,53 @@
       </div>
     </section>
 
+    <section id="compare" class="view" hidden>
+      <section class="card">
+        <div class="panelhead"><h2>Mehrere reale Messläufe vergleichen</h2></div>
+        <div class="panelbody">
+          <p class="lead">Nur Messdaten aus CSV-Dateien, keine konstruierten Kurven. Bestehende v0.1-CSV-Dateien bleiben verwendbar. Die ausgewählte Untersuchungsvariable wird geprüft, nicht durch KI bestimmt.</p>
+          <div class="compare-controls">
+            <label>CSV-Messläufe (Mehrfachauswahl)
+              <input id="compareFiles" type="file" accept=".csv,text/csv" multiple />
+            </label>
+            <label>Untersuchungsvariable
+              <select id="targetVariable">
+                <option value="auto" selected>aus Änderungen vermuten</option>
+                <option value="temperature">Temperatur</option>
+                <option value="tabletForm">Tablettenform</option>
+                <option value="waterMass">Wassermasse</option>
+                <option value="tabletMass">Tablettenmasse</option>
+              </select>
+            </label>
+            <label>Kurvendarstellung
+              <select id="compareMode">
+                <option value="absolute">Δm(t) / g – absolut</option>
+                <option value="normalized">X(t) = Δm(t)/Δm∞ – normiert</option>
+              </select>
+            </label>
+            <button id="addCurrentRun" class="secondary" type="button">Aktuellen Lauf hinzufügen</button>
+            <button id="clearComparison" class="secondary" type="button">Vergleich leeren</button>
+          </div>
+          <div id="comparisonStatus" class="status-line">Noch keine Vergleichsläufe geladen.</div>
+          <div class="chartwrap"><canvas id="compareCanvas" aria-label="Überlagerte reale Messkurven"></canvas></div>
+          <div id="compareLegend" class="legend" aria-label="Farblegende der Messläufe"></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Messlauf</th><th>T / °C</th><th>Wasser / g</th><th>Tablette / g</th><th>Form</th><th>Δm∞ / g</th><th>t₅₀ / s</th><th>t₉₀ / s</th><th>t₉₅ / s</th><th>Beginn / s</th><th>Aktion</th></tr></thead>
+            <tbody id="comparisonTable"></tbody></table></div>
+          <div id="variableCheck" class="info" aria-live="polite">Vergleichsdaten fehlen noch.</div>
+          <div class="buttons">
+            <button id="compareAi" class="primary" disabled>KI-Vergleichspaket erzeugen</button>
+            <button id="compareLimits" class="secondary" disabled>Welche Aussage dürfen die Daten NICHT beweisen?</button>
+            <button id="copyComparison" class="secondary" disabled>KI-Auftrag kopieren</button>
+          </div>
+          <textarea id="comparisonPrompt" rows="12" readonly placeholder="Erst Daten laden und deterministisch auswerten."></textarea>
+        </div>
+      </section>
+    </section>
+
     <footer class="footer">WAAGE_LAB · CHEMIE mit KI · Lehrkräfte steuern. SchülerInnen denken. KI unterstützt.</footer>
   </main>
   <script src="app.js"></script>
+  <script src="compare.js"></script>
 </body>
 </html>
