@@ -58,6 +58,16 @@ Die App ist statisch und benötigt keinen Build-Schritt.
 
 Bei direktem Öffnen als `file://` kann Web Serial je nach Browser blockiert sein. Demo und Log-Import bleiben nutzbar.
 
+## Testen (ohne Waage)
+
+Mit installiertem Node.js:
+
+```bash
+node tests/waage_v02.test.js
+```
+
+Die Tests prüfen die Verknüpfungen zwischen HTML und JavaScript, die gravimetrische Wassermasse, Schwellenzeiten (einschließlich zu früh überschrittener Schwellen), den CSV-Import und die Kontrollvariablenprüfung. Die **physische Web-Serial-Messung** und der manuelle Einwurfmarker müssen zusätzlich am Gerät geprüft werden.
+
 ## GitHub Pages
 
 Einmalig in GitHub unter **Settings → Pages** als Quelle den Branch `main` und `/ (root)` wählen. Danach läuft die Anwendung über HTTPS und kann in Chromium-Browsern Web Serial verwenden.
