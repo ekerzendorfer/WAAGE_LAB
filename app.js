@@ -16,7 +16,11 @@ const state = {
   tabletMass: 6.13,
   baseline: null,
   sampleStartEpoch: null,
-  waitingForSample: false
+  waitingForSample: false,
+  eventEpoch: null,
+  eventMode: null,
+  analysisFrom: 5,
+  runMeta: null
 };
 
 const fmt = (v, d=2) => Number.isFinite(v) ? v.toFixed(d).replace('.', ',') : '–';
@@ -33,13 +37,44 @@ function switchView(id){
 }
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
 
-function updateM0(){
-  state.tabletMass = Number($('tabletMass').value) || 0;
-  state.baseline = Number($('baselineMass').value);
-  state.m0 = Number.isFinite(state.baseline) && state.baseline>0 ? state.baseline + state.tabletMass : null;
-  $('m0Value').textContent = state.m0 ? `${fmt(state.m0)} g` : '–';
+function asNumber(id){
+  const raw=$(id).value.trim();
+  return raw==='' ? NaN : Number(raw.replace(',','.'));
 }
-$('tabletMass').addEventListener('input',updateM0); $('baselineMass').addEventListener('input',updateM0);
+function readConditions(){
+  return {
+    preset:$('preset').value, tabletMass:asNumber('tabletMass'), waterMass:asNumber('waterMass'),
+    beakerMass:asNumber('beakerMass'), temperature:asNumber('temperature'),
+    tabletForm:$('tabletForm').value, note:$('note').value.trim(),
+    m0:state.m0, analysisFrom:state.analysisFrom,
+    eventMode:state.eventMode
+  };
+}
+function updateConditionsSummary(){
+  const c=readConditions(), val=(n,suffix='g')=>Number.isFinite(n)?fmt(n,2)+' '+suffix:'nicht angegeben';
+  $('conditionsSummary').textContent='Versuchsbedingungen: '+c.tabletForm+' · Tablette '+val(c.tabletMass)+
+    ' · Wasser '+val(c.waterMass)+' · Starttemperatur '+val(c.temperature,'°C')+
+    ' · Becher leer '+val(c.beakerMass)+' · Beginn der Kennwertauswertung '+fmt(state.analysisFrom,1)+' s.';
+}
+function updateM0(){
+  state.tabletMass=asNumber('tabletMass');
+  state.baseline=asNumber('baselineMass');
+  const dry=asNumber('beakerMass');
+  const derived=Number.isFinite(state.baseline)&&Number.isFinite(dry)&&state.baseline>dry ? state.baseline-dry : NaN;
+  const auto=Number.isFinite(derived);
+  $('waterMass').readOnly=auto;
+  if(auto) $('waterMass').value=derived.toFixed(2);
+  $('waterMassHint').textContent=auto?'Gravimetrisch berechnet: Basis − trockener Becher.':'Ohne beide Wägungen ist eine manuelle Wassermasseneingabe möglich.';
+  state.m0=Number.isFinite(state.baseline)&&state.baseline>0&&state.tabletMass>0?state.baseline+state.tabletMass:null;
+  $('m0Value').textContent=state.m0!==null ? fmt(state.m0)+' g':'–';
+  updateConditionsSummary();
+}
+['tabletMass','baselineMass','beakerMass'].forEach(id=>$(id).addEventListener('input',updateM0));
+['waterMass','temperature','tabletForm','preset','note'].forEach(id=>$(id).addEventListener('input',updateConditionsSummary));
+$('analysisFrom').addEventListener('input',()=>{
+  const n=asNumber('analysisFrom');state.analysisFrom=Number.isFinite(n)?Math.min(30,Math.max(0,n)):5;
+  if(state.run.length)analyze();updateConditionsSummary();drawAll();
+});
 
 function savePrediction(){
   const final = Number($('predFinal').value), t90 = Number($('predT90').value);
@@ -64,22 +99,14 @@ function parseMass(text){
 }
 
 function acceptMass(mass, epochMs=Date.now()){
-  if(!Number.isFinite(mass)) return;
-  $('liveMass').textContent=`${fmt(mass)} g`;
+  if(!Number.isFinite(mass))return;
+  $('liveMass').textContent=fmt(mass)+' g';
   state.liveBuffer.push({epochMs,mass});
-  if(state.liveBuffer.length>800) state.liveBuffer.splice(0,state.liveBuffer.length-800);
-  if(state.running){
-    if(state.waitingForSample){
-      const tol=Math.max(0.25,state.tabletMass*0.06);
-      if(Math.abs(mass-state.m0)<=tol){
-        state.waitingForSample=false; state.runStartMs=epochMs;
-        $('runStatus').textContent='Tablette erkannt – reale Messung läuft.';
-      } else { return; }
-    }
-    const t=(epochMs-state.runStartMs)/1000;
-    const dm=state.m0 ? state.m0-mass : NaN;
-    state.run.push({t,mass,dm,epochMs});
-    if(state.run.length%4===0) updateRunUI();
+  if(state.liveBuffer.length>800)state.liveBuffer.splice(0,state.liveBuffer.length-800);
+  // Der Vorlauf wird fortlaufend gepuffert. Kein Rohwert wird für den Einwurf erkannt oder gelöscht.
+  if(state.running && state.eventEpoch!==null){
+    state.run.push({t:(epochMs-state.eventEpoch)/1000,mass,dm:state.m0-mass,epochMs});
+    if(state.run.length%4===0)updateRunUI();
   }
 }
 
@@ -128,24 +155,52 @@ $('captureBaseline').addEventListener('click',()=>{
 
 function startRun(){
   updateM0();
-  if(!state.m0){$('runStatus').textContent='Bitte zuerst Basis-Masse und Tablettenmasse festlegen.';return;}
-  state.run=[]; state.running=true; state.source=state.source||'serial';
-  state.waitingForSample=$('preset').value==='brause';
-  state.runStartMs=state.waitingForSample?null:Date.now();
-  $('startRun').disabled=true; $('stopRun').disabled=false; $('exportCsv').disabled=true; $('makeAiPackage').disabled=true;
-  $('runStatus').textContent=state.waitingForSample?'Messung scharf. Tablette jetzt einwerfen – Start wird automatisch erkannt.':'Messung läuft.'; updateRunUI();
+  if(!state.m0){$('runStatus').textContent='Zuerst Basis-Masse und Tablettenmasse festlegen.';return;}
+  const newest=state.liveBuffer.at(-1);
+  if(!state.reading||!newest||Date.now()-newest.epochMs>2500){
+    $('runStatus').textContent='Für einen neuen Lauf zuerst die serielle Waage verbinden und stabile Livewerte abwarten.';return;
+  }
+  state.run=[];state.running=true;state.source='serial';state.eventEpoch=null;state.eventMode=null;
+  state.runMeta=null;state.waitingForSample=true;state.runStartMs=null;
+  $('startRun').disabled=true;$('markThrow').disabled=false;$('stopRun').disabled=false;
+  $('exportCsv').disabled=true;$('makeAiPackage').disabled=true;
+  $('runStatus').textContent='Vorlauf wird gepuffert. Beim Einwurf „Einwurf markieren“ drücken; der Marker definiert t = 0.';
+  updateRunUI();
+}
+function markThrow(){
+  if(!state.running||state.eventEpoch!==null)return;
+  const epoch=Date.now();state.eventEpoch=epoch;state.runStartMs=epoch;
+  state.eventMode='manueller Marker';state.waitingForSample=false;
+  // Rohwerte der fünf Sekunden VOR dem Einwurf als t<0 erhalten.
+  const pre=state.liveBuffer.filter(x=>x.epochMs>=epoch-5000 && x.epochMs<=epoch);
+  state.run=pre.map(x=>({t:(x.epochMs-epoch)/1000,mass:x.mass,dm:state.m0-x.mass,epochMs:x.epochMs}));
+  state.runMeta=readConditions();state.runMeta.eventMode=state.eventMode;
+  $('markThrow').disabled=true;
+  $('runStatus').textContent='Einwurfmarker gesetzt. Ungeglättete Rohdaten einschließlich Vorlauf bleiben gespeichert.';
+  updateRunUI();
 }
 function stopRun(){
-  state.running=false; state.waitingForSample=false; $('startRun').disabled=false; $('stopRun').disabled=true;
-  $('runStatus').textContent='Messlauf beendet. Auswertung ist verfügbar.';
-  $('exportCsv').disabled=state.run.length<5; $('makeAiPackage').disabled=state.run.length<5; analyze(); updateRunUI();
+  if(!state.running)return;
+  state.running=false;state.waitingForSample=false;
+  $('startRun').disabled=false;$('markThrow').disabled=true;$('stopRun').disabled=true;
+  const good=state.eventEpoch!==null && state.run.filter(r=>r.t>=0).length>=5;
+  $('runStatus').textContent=good?'Messlauf beendet; Auswertung verfügbar.':'Messlauf ohne genügend Daten nach dem Einwurf; kein CSV-Export.';
+  $('exportCsv').disabled=!good;$('makeAiPackage').disabled=!good;
+  analyze();updateRunUI();
 }
 function resetRun(){
-  state.running=false;state.waitingForSample=false;state.run=[];state.runStartMs=null;state.source=null;
-  $('startRun').disabled=false;$('stopRun').disabled=true;$('exportCsv').disabled=true;$('makeAiPackage').disabled=true;
-  $('runStatus').textContent='Bereit.'; $('sourceBadge').textContent='keine Daten'; $('rawTable').innerHTML=''; $('aiPackage').value=''; $('copyAiPackage').disabled=true;$('openChatGPT').disabled=true; updateRunUI(); analyze();
+  state.running=false;state.waitingForSample=false;state.run=[];state.runStartMs=null;
+  state.source=null;state.eventEpoch=null;state.eventMode=null;state.runMeta=null;
+  $('startRun').disabled=false;$('markThrow').disabled=true;$('stopRun').disabled=true;
+  $('exportCsv').disabled=true;$('makeAiPackage').disabled=true;
+  $('runStatus').textContent='Bereit.';$('sourceBadge').textContent='keine Daten';
+  $('rawTable').innerHTML='';$('aiPackage').value='';$('copyAiPackage').disabled=true;$('openChatGPT').disabled=true;
+  updateRunUI();analyze();
 }
-$('startRun').addEventListener('click',startRun);$('stopRun').addEventListener('click',stopRun);$('resetRun').addEventListener('click',resetRun);
+$('startRun').addEventListener('click',startRun);
+$('markThrow').addEventListener('click',markThrow);
+$('stopRun').addEventListener('click',stopRun);
+$('resetRun').addEventListener('click',resetRun);
 
 function estimateHz(){
   if(state.run.length<3) return NaN;
@@ -166,16 +221,39 @@ function updateRawTable(){
   $('rawTable').innerHTML=rows.filter((_,i)=>i%step===0 || i===rows.length-1).map(r=>`<tr><td>${fmt(r.t,2)}</td><td>${fmt(r.mass,2)}</td><td>${fmt(r.dm,3)}</td></tr>`).join('');
 }
 
-function stableFinalDm(){
-  if(state.run.length<5) return NaN; const end=state.run.at(-1).t; const vals=state.run.filter(r=>r.t>=end-5 && Number.isFinite(r.dm)).map(r=>r.dm); return median(vals);
-}
-function crossingTime(target){
-  const clean=state.run.filter(r=>Number.isFinite(r.dm) && r.dm>=0); for(const r of clean){if(r.dm>=target)return r.t;} return NaN;
+function metricsForRun(points, from=0){
+  const eligible=points.filter(r=>Number.isFinite(r.t)&&r.t>=Math.max(0,from)&&Number.isFinite(r.dm))
+                       .sort((a,b)=>a.t-b.t);
+  if(eligible.length<5)return {final:NaN,t50:NaN,t90:NaN,t95:NaN,plateau:false};
+  const end=eligible.at(-1).t;
+  const tail=eligible.filter(r=>r.t>=end-5).map(r=>r.dm);
+  const final=tail.length>=3?median(tail):NaN;
+  if(!(final>0))return {final:NaN,t50:NaN,t90:NaN,t95:NaN,plateau:false};
+  // Lineare Schwelleninterpolation. Die Einschwingphase wird NICHT gelöscht,
+  // sondern nur von der Kennwertberechnung ausgenommen.
+  const cross=fraction=>{
+    const threshold=final*fraction;
+    for(let i=0;i<eligible.length;i++){
+      const p=eligible[i],prev=eligible[i-1];
+      if(p.dm>=threshold){
+        if(!prev || prev.dm>=threshold)return p.t;
+        const span=p.dm-prev.dm;
+        return span>0?prev.t+(p.t-prev.t)*(threshold-prev.dm)/span:p.t;
+      }
+    }
+    return NaN;
+  };
+  const first=tail.slice(0,Math.ceil(tail.length/2)),last=tail.slice(Math.ceil(tail.length/2));
+  const plateau=first.length>0&&last.length>0&&Math.abs(median(first)-median(last))<=0.02;
+  return {final,t50:cross(.5),t90:cross(.9),t95:cross(.95),plateau};
 }
 function analyze(){
-  const final=stableFinalDm(); const t50=Number.isFinite(final)?crossingTime(final*.5):NaN; const t90=Number.isFinite(final)?crossingTime(final*.9):NaN; const t95=Number.isFinite(final)?crossingTime(final*.95):NaN;
-  $('aFinal').textContent=Number.isFinite(final)?`${fmt(final)} g`:'–'; $('aT50').textContent=Number.isFinite(t50)?`${fmt(t50,1)} s`:'–'; $('aT90').textContent=Number.isFinite(t90)?`${fmt(t90,1)} s`:'–'; $('aT95').textContent=Number.isFinite(t95)?`${fmt(t95,1)} s`:'–';
-  return {final,t50,t90,t95};
+  const a=metricsForRun(state.run,state.analysisFrom);
+  $('aFinal').textContent=Number.isFinite(a.final)?fmt(a.final)+' g'+(!a.plateau?'*':''):'–';
+  $('aT50').textContent=Number.isFinite(a.t50)?fmt(a.t50,1)+' s':'–';
+  $('aT90').textContent=Number.isFinite(a.t90)?fmt(a.t90,1)+' s':'–';
+  $('aT95').textContent=Number.isFinite(a.t95)?fmt(a.t95,1)+' s':'–';
+  return a;
 }
 
 async function loadDemo(){
