@@ -45,6 +45,7 @@ function importCsvRun(text,name){
   }
   points.sort((a,b)=>a.t-b.t);
   if(points.length<5)throw Error('Weniger als fünf numerische Messwerte.');
+  if(points.length>50000)throw Error('Für den interaktiven Vergleich maximal 50 000 Punkte je Lauf. Bitte den Datensatz vorher nachvollziehbar reduzieren.');
   if(points.at(-1).t-points[0].t<1)throw Error('Zeitachse zu kurz oder ungültig.');
   return buildComparisonRun(name,points,{
     temperature:num(meta.temperature_C),waterMass:num(meta.water_g),tabletMass:num(meta.tablet_g),
@@ -146,9 +147,14 @@ function drawCompareChart(mode){
     })).filter(p=>Number.isFinite(p.y)),
     valid:mode!=='normalized'||r.metrics.final>0
   }));
-  const maxT=Math.max(90,...series.flatMap(s=>s.points.map(p=>p.t)));
-  const ymax=Math.max(mode==='normalized'?1.1:0.25,
-    ...series.flatMap(s=>s.points.map(p=>p.y>0?p.y:0)))*1.1;
+  let maxT=90,ymax=mode==='normalized'?1.1:0.25;
+  for(const s of series){
+    for(const p of s.points){
+      if(p.t>maxT)maxT=p.t;
+      if(p.y>ymax&&Number.isFinite(p.y))ymax=p.y;
+    }
+  }
+  ymax*=1.1;
   c.strokeStyle='#dae1e9';c.lineWidth=1;c.font='12px system-ui';c.fillStyle='#5e6b79';
   for(let i=0;i<=5;i++){
     const y=pad.t+i*ph/5;c.beginPath();c.moveTo(pad.l,y);c.lineTo(pad.l+pw,y);c.stroke();
@@ -221,7 +227,9 @@ $('addCurrentRun').addEventListener('click',()=>{
     $('comparisonStatus').textContent='Zuerst einen realen Messlauf beenden oder importieren.';return;
   }
   if(comparisonRuns.length>=24)return;
-  comparisonRuns.push(currentRunForComparison());renderComparison();
+  const run=currentRunForComparison();
+  run.name='Aktueller Lauf '+(comparisonRuns.length+1);
+  comparisonRuns.push(run);renderComparison();
 });
 $('clearComparison').addEventListener('click',()=>{
   comparisonRuns.length=0;$('comparisonPrompt').value='';
