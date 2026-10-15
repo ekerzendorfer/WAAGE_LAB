@@ -238,12 +238,14 @@ function metricsForRun(points, from=0){
   // sondern nur von der Kennwertberechnung ausgenommen.
   const cross=fraction=>{
     const threshold=final*fraction;
-    for(let i=0;i<eligible.length;i++){
+    // Eine bereits vor dem Auswertebeginn überschrittene Schwelle darf nicht
+    // fälschlich als t=analysisFrom ausgegeben werden.
+    if(eligible[0].dm>=threshold)return NaN;
+    for(let i=1;i<eligible.length;i++){
       const p=eligible[i],prev=eligible[i-1];
-      if(p.dm>=threshold){
-        if(!prev || prev.dm>=threshold)return p.t;
+      if(prev.dm<threshold&&p.dm>=threshold){
         const span=p.dm-prev.dm;
-        return span>0?prev.t+(p.t-prev.t)*(threshold-prev.dm)/span:p.t;
+        return span>0?prev.t+(p.t-prev.t)*(threshold-prev.dm)/span:NaN;
       }
     }
     return NaN;
