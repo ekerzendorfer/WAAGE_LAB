@@ -261,44 +261,76 @@ async function loadDemo(){
     const txt=await fetch('data/brause_run03.csv').then(r=>{if(!r.ok)throw new Error('Demo-Datei nicht gefunden');return r.text();});
     $('baselineMass').value='195.42';$('tabletMass').value='6.13';updateM0();
     state.run=txt.trim().split(/\r?\n/).slice(1).map(line=>{const [t,m,dm]=line.split(';').map(Number);return{t,mass:m,dm,epochMs:null};});
-    state.source='demo';state.running=false;$('runStatus').textContent='Realer Probelauf 03 geladen (14.10.2026).';$('exportCsv').disabled=false;$('makeAiPackage').disabled=false;updateRunUI();analyze();switchView('measure');
+    state.source='demo';state.eventMode='Demodaten – Einwurfmarker unbekannt';state.eventEpoch=null;state.running=false;state.runMeta=readConditions();$('runStatus').textContent='Realer Probelauf 03 geladen (14.10.2026).';$('exportCsv').disabled=false;$('makeAiPackage').disabled=false;updateRunUI();analyze();switchView('measure');
   }catch(err){$('runStatus').textContent=err.message;}
 }
 $('loadDemo').addEventListener('click',loadDemo);
 
 $('logFile').addEventListener('change',async(e)=>{
-  const file=e.target.files?.[0]; if(!file)return; const text=await file.text();
-  const parsed=[]; const re=/\[(.*?)\]\s*([+-])\s*(\d+(?:[.,]\d+)?)\s*g/;
-  for(const line of text.split(/\r?\n/)){const m=line.match(re);if(!m)continue;const epoch=Date.parse(m[1]);const mass=(m[2]==='-'?-1:1)*Number(m[3].replace(',','.'));if(Number.isFinite(epoch)&&Number.isFinite(mass))parsed.push({epochMs:epoch,mass});}
-  if(parsed.length<5){$('runStatus').textContent='Keine verwertbaren Tera-Term-Zeilen gefunden.';return;}
-  updateM0(); if(!state.m0){$('runStatus').textContent='Vor dem Import bitte Basis-Masse und Tablettenmasse eintragen.';return;}
-  let selected=parsed;
-  if($('preset').value==='brause'){
-    const tol=Math.max(0.25,state.tabletMass*0.06);
-    const startIndex=parsed.findIndex(x=>Math.abs(x.mass-state.m0)<=tol);
-    if(startIndex>=0) selected=parsed.slice(startIndex);
-  }
-  const t0=selected[0].epochMs; state.run=selected.map(x=>({t:(x.epochMs-t0)/1000,mass:x.mass,dm:state.m0-x.mass,epochMs:x.epochMs}));state.source='log';state.running=false;
-  $('runStatus').textContent=`${selected.length} verwertbare Log-Zeilen importiert${selected.length!==parsed.length?' (Start automatisch erkannt)':''}.`;$('exportCsv').disabled=false;$('makeAiPackage').disabled=false;updateRunUI();analyze();
+  const file=e.target.files?.[0];if(!file)return;
+  try{
+    const text=await file.text(),parsed=[];
+    const re=/\\[(.*?)\\]\\s*([+-])\\s*(\\d+(?:[.,]\\d+)?)\\s*g/i;
+    for(const line of text.split(/\\r?\\n/)){
+      const m=line.match(re);if(!m)continue;
+      const epoch=Date.parse(m[1]),mass=(m[2]==='-'?-1:1)*Number(m[3].replace(',','.'));
+      if(Number.isFinite(epoch)&&Number.isFinite(mass))parsed.push({epochMs:epoch,mass});
+    }
+    if(parsed.length<5){$('runStatus').textContent='Keine verwertbaren Tera-Term-Zeilen gefunden.';return;}
+    updateM0();if(!state.m0){$('runStatus').textContent='Vor dem Import Basis-Masse und Tablettenmasse erfassen.';return;}
+    const offset=asNumber('logEventOffset');
+    let eventTime,mode;
+    if(Number.isFinite(offset)&&offset>=0){
+      eventTime=parsed[0].epochMs+offset*1000;mode='manuell gesetzter Log-Marker';
+    }else{
+      const tol=Math.max(.25,state.tabletMass*.06);
+      const found=parsed.find(x=>Math.abs(x.mass-state.m0)<=tol);
+      if(!found){$('runStatus').textContent='Einwurf nicht gefunden. Bitte Einwurfzeit ab Logbeginn im entsprechenden Feld angeben.';return;}
+      eventTime=found.epochMs;mode='geschätzter Marker (Masseschwelle)';
+    }
+    const window=parsed.filter(x=>x.epochMs>=eventTime-5000);
+    state.run=window.map(x=>({t:(x.epochMs-eventTime)/1000,mass:x.mass,dm:state.m0-x.mass,epochMs:x.epochMs}));
+    state.source='log';state.running=false;state.eventEpoch=eventTime;state.eventMode=mode;
+    state.runMeta=readConditions();$('startRun').disabled=false;$('markThrow').disabled=true;$('stopRun').disabled=true;
+    $('runStatus').textContent=window.length+' Log-Werte importiert; '+mode+'. Vorlauf bis 5 s erhalten. Einwurfzeit bitte kritisch prüfen.';
+    $('exportCsv').disabled=window.length<5;$('makeAiPackage').disabled=window.length<5;
+    updateRunUI();analyze();
+  }catch(err){$('runStatus').textContent='Log-Import fehlgeschlagen: '+err.message;}
+  e.target.value='';
 });
 
 function exportCsv(){
-  const meta=`# WAAGE_LAB
-# m0_g=${state.m0??''}
-# tablet_g=${$('tabletMass').value}
-# water_g=${$('waterMass').value}
-# temperature_C=${$('temperature').value}
-# tablet_form=${$('tabletForm').value}
-`;
-  const body='t_s;m_g;dm_g\n'+state.run.map(r=>`${r.t.toFixed(3)};${r.mass.toFixed(2)};${Number.isFinite(r.dm)?r.dm.toFixed(3):''}`).join('\n');
-  const blob=new Blob([meta+body],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`waage_lab_${new Date().toISOString().slice(0,19).replaceAll(':','-')}.csv`;a.click();URL.revokeObjectURL(a.href);
+  if(state.run.length<5)return;
+  const m=state.runMeta||readConditions();
+  const safe=v=>v===undefined||v===null||!Number.isFinite(v)?'':v;
+  const str=v=>String(v??'').replace(/[\\r\\n;]+/g,' ').trim();
+  const meta=[
+    '# WAAGE_LAB v0.2.0',
+    '# m0_g='+safe(m.m0),
+    '# tablet_g='+safe(m.tabletMass),
+    '# water_g='+safe(m.waterMass),
+    '# beaker_mass_g='+safe(m.beakerMass),
+    '# temperature_C='+safe(m.temperature),
+    '# tablet_form='+str(m.tabletForm),
+    '# preset='+str(m.preset),
+    '# note='+str(m.note),
+    '# event_mode='+str(state.eventMode||m.eventMode),
+    '# analysis_from_s='+safe(m.analysisFrom),
+    '# prebuffer_s=5'
+  ].join('\\n')+'\\n';
+  const body='t_s;m_g;dm_g\\n'+state.run.map(r=>r.t.toFixed(3)+';'+r.mass.toFixed(2)+';'+(Number.isFinite(r.dm)?r.dm.toFixed(3):'')).join('\\n');
+  const blob=new Blob([meta+body],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='waage_lab_'+new Date().toISOString().slice(0,19).replaceAll(':','-')+'.csv';
+  a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
 }
+
 $('exportCsv').addEventListener('click',exportCsv);
 
 function makeAiPackage(){
   const a=analyze(); if(!Number.isFinite(a.final))return;
   const pred=state.prediction?`\nEIGENE PROGNOSE VOR DEM VERSUCH\n- erwartetes Δm∞: ${state.prediction.final.toFixed(2)} g\n- erwartetes t90: ${state.prediction.t90.toFixed(0)} s\n- Begründung: ${state.prediction.reason||'(keine)'}`:'\nEIGENE PROGNOSE VOR DEM VERSUCH\n- keine gespeichert';
-  const prompt=`WAAGE_LAB – DATENBASIERTES KI-ANALYSEPAKET\n\nVERSUCH\n- Preset: ${$('preset').selectedOptions[0].textContent}\n- Tablettenmasse: ${$('tabletMass').value||'nicht angegeben'} g\n- Wassermasse: ${$('waterMass').value||'nicht angegeben'} g\n- Starttemperatur: ${$('temperature').value||'nicht angegeben'} °C\n- Tablettenform: ${$('tabletForm').value}\n- Notiz: ${$('note').value||'(keine)'}\n- m0: ${state.m0?.toFixed(2)||'nicht angegeben'} g${pred}\n\nKLASSISCHE AUSWERTUNG DER APP\n- Δm∞ (Median der letzten 5 s): ${a.final.toFixed(3)} g\n- t50: ${Number.isFinite(a.t50)?a.t50.toFixed(1):'n.v.'} s\n- t90: ${Number.isFinite(a.t90)?a.t90.toFixed(1):'n.v.'} s\n- t95: ${Number.isFinite(a.t95)?a.t95.toFixed(1):'n.v.'} s\n- Anzahl Rohmesswerte: ${state.run.length}\n\nDEIN AUFTRAG ALS WISSENSCHAFTLICHER COACH\n1. Verwende ausschließlich die oben angegebenen Messdaten und Versuchsbedingungen; erfinde keine fehlenden Werte.\n2. Trenne ausdrücklich: Beobachtung – Messwert – Interpretation.\n3. Prüfe, welche Aussage die Massenmessung tatsächlich erlaubt. Sie misst Masse, die das offene System verlässt; sie misst nicht direkt die chemische CO₂-Bildungsrate.\n4. Vergleiche Prognose und Messung, falls eine Prognose vorhanden ist.\n5. Suche mindestens zwei mögliche Störgrößen oder alternative Erklärungen.\n6. Verwechsle eine schnellere Freisetzung nicht mit einer größeren Gesamtmenge.\n7. Stelle zuerst zwei kurze Rückfragen, die zum eigenen Nachdenken zwingen. Gib danach eine knappe, fachlich saubere Interpretation.\n8. Schließe mit einer Transferfrage, die ohne KI beantwortet werden soll.`;
+  const prompt=`WAAGE_LAB – DATENBASIERTES KI-ANALYSEPAKET\n\nVERSUCH\n- Preset: ${$('preset').selectedOptions[0].textContent}\n- Tablettenmasse: ${$('tabletMass').value||'nicht angegeben'} g\n- Wassermasse: ${$('waterMass').value||'nicht angegeben'} g\n- Starttemperatur: ${$('temperature').value||'nicht angegeben'} °C\n- Tablettenform: ${$('tabletForm').value}\n- Notiz: ${$('note').value||'(keine)'}\n- m0: ${state.m0?.toFixed(2)||'nicht angegeben'} g${pred}\n\nKLASSISCHE AUSWERTUNG DER APP\n- Δm∞ (Median der letzten 5 s): ${a.final.toFixed(3)} g\n- t50: ${Number.isFinite(a.t50)?a.t50.toFixed(1):'n.v.'} s\n- t90: ${Number.isFinite(a.t90)?a.t90.toFixed(1):'n.v.'} s\n- t95: ${Number.isFinite(a.t95)?a.t95.toFixed(1):'n.v.'} s\n- Anzahl Rohmesswerte: ${state.run.length}\n- Einwurfmarker: ${state.eventMode||'nicht dokumentiert'}\n- Kennwerte ausgewertet ab: ${state.analysisFrom.toFixed(1)} s; Frühphase bleibt in den Rohdaten.\n- Endphase ausreichend stabil (Medianvergleich): ${a.plateau?'ja, nach einfacher 0,02-g-Regel':'nicht eindeutig – vorläufiges Δm∞'}\n\nDEIN AUFTRAG ALS WISSENSCHAFTLICHER COACH\n1. Verwende ausschließlich die oben angegebenen Messdaten und Versuchsbedingungen; erfinde keine fehlenden Werte.\n2. Trenne ausdrücklich: Beobachtung – Messwert – Interpretation.\n3. Prüfe, welche Aussage die Massenmessung tatsächlich erlaubt. Sie misst Masse, die das offene System verlässt; sie misst nicht direkt die chemische CO₂-Bildungsrate.\n4. Vergleiche Prognose und Messung, falls eine Prognose vorhanden ist.\n5. Suche mindestens zwei mögliche Störgrößen oder alternative Erklärungen.\n6. Verwechsle eine schnellere Freisetzung nicht mit einer größeren Gesamtmenge.\n7. Stelle zuerst zwei kurze Rückfragen, die zum eigenen Nachdenken zwingen. Gib danach eine knappe, fachlich saubere Interpretation.\n8. Schließe mit einer Transferfrage, die ohne KI beantwortet werden soll.`;
   $('aiPackage').value=prompt;$('copyAiPackage').disabled=false;$('openChatGPT').disabled=false;
 }
 $('makeAiPackage').addEventListener('click',makeAiPackage);
@@ -314,12 +346,22 @@ function chart(canvas, actual=[], prediction=[], opts={}){
   for(let i=0;i<=6;i++){const x=pad.l+pw*i/6;c.beginPath();c.moveTo(x,pad.t);c.lineTo(x,h-pad.b);c.stroke();const val=maxT*i/6;c.fillText(val.toFixed(0),x-8,h-20);}
   c.fillStyle='#172033';c.font='13px system-ui';c.fillText('t / s',w/2-10,h-5);c.save();c.translate(14,h/2+25);c.rotate(-Math.PI/2);c.fillText('Δm / g',0,0);c.restore();
   const X=t=>pad.l+(t/maxT)*pw, Y=v=>pad.t+ph-(v/yMax)*ph;
+  if(Number.isFinite(opts.shadeUntil)&&opts.shadeUntil>0){
+    c.fillStyle='rgba(230,165,73,.15)';c.fillRect(pad.l,pad.t,X(Math.min(maxT,opts.shadeUntil))-pad.l,ph);
+    c.fillStyle='#876028';c.font='11px system-ui';c.fillText('Einwurf / Einschwingen',pad.l+5,pad.t+ph-8);
+    c.strokeStyle='#ad7622';c.setLineDash([4,4]);c.beginPath();c.moveTo(X(Math.min(maxT,opts.shadeUntil)),pad.t);c.lineTo(X(Math.min(maxT,opts.shadeUntil)),pad.t+ph);c.stroke();c.setLineDash([]);
+  }
   if(prediction.length){c.setLineDash([8,6]);c.strokeStyle='#6d3d7f';c.lineWidth=2;c.beginPath();prediction.forEach((p,i)=>i?c.lineTo(X(p.t),Y(p.dm)):c.moveTo(X(p.t),Y(p.dm)));c.stroke();c.setLineDash([]);c.fillStyle='#6d3d7f';c.fillText('Prognose',pad.l+8,pad.t+16);}
-  const clean=actual.filter(p=>Number.isFinite(p.dm)&&p.dm>=-0.05&&p.dm<=yMax*1.3);
+  const clean=actual.filter(p=>Number.isFinite(p.t)&&p.t>=0&&Number.isFinite(p.dm)&&p.dm>=-0.05&&p.dm<=yMax*1.3);
   if(clean.length){c.strokeStyle='#345a7d';c.lineWidth=2.5;c.beginPath();clean.forEach((p,i)=>i?c.lineTo(X(p.t),Y(p.dm)):c.moveTo(X(p.t),Y(p.dm)));c.stroke();c.fillStyle='#345a7d';c.fillText('Real',pad.l+82,pad.t+16);}
   if(!clean.length&&!prediction.length){c.fillStyle='#5e6b79';c.font='14px system-ui';c.fillText(opts.empty||'Noch keine Daten.',pad.l+20,pad.t+50);}
 }
-function drawAll(){chart($('predictionCanvas'),[],predictionPoints(120),{empty:'Prognose eingeben.'});chart($('liveCanvas'),state.run,predictionPoints(Math.max(120,state.run.at(-1)?.t||0)));}
+function drawAll(){
+  chart($('predictionCanvas'),[],predictionPoints(120),{empty:'Prognose eingeben.'});
+  chart($('liveCanvas'),state.run,predictionPoints(Math.max(120,state.run.at(-1)?.t||0)),{shadeUntil:state.analysisFrom});
+  if(typeof drawTransient==='function')drawTransient();
+  if(typeof renderComparison==='function'&&!$('compare').hidden)renderComparison();
+}
 window.addEventListener('resize',()=>requestAnimationFrame(drawAll));
 
 if('serial' in navigator){$('serialSupport').textContent='Web Serial verfügbar. Chrome/Edge: Verbindung erfolgt erst nach deiner Freigabe.';}else{$('serialSupport').textContent='Web Serial nicht verfügbar. Demo oder Log-Import funktionieren trotzdem.';}
