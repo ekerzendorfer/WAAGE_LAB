@@ -270,8 +270,8 @@ $('logFile').addEventListener('change',async(e)=>{
   const file=e.target.files?.[0];if(!file)return;
   try{
     const text=await file.text(),parsed=[];
-    const re=/\\[(.*?)\\]\\s*([+-])\\s*(\\d+(?:[.,]\\d+)?)\\s*g/i;
-    for(const line of text.split(/\\r?\\n/)){
+    const re=/\[(.*?)\]\s*([+-])\s*(\d+(?:[.,]\d+)?)\s*g/i;
+    for(const line of text.split(/\r?\n/)){
       const m=line.match(re);if(!m)continue;
       const epoch=Date.parse(m[1]),mass=(m[2]==='-'?-1:1)*Number(m[3].replace(',','.'));
       if(Number.isFinite(epoch)&&Number.isFinite(mass))parsed.push({epochMs:epoch,mass});
@@ -303,7 +303,7 @@ function exportCsv(){
   if(state.run.length<5)return;
   const m=state.runMeta||readConditions();
   const safe=v=>v===undefined||v===null||!Number.isFinite(v)?'':v;
-  const str=v=>String(v??'').replace(/[\\r\\n;]+/g,' ').trim();
+  const str=v=>String(v??'').replace(/[\r\n;]+/g,' ').trim();
   const meta=[
     '# WAAGE_LAB v0.2.0',
     '# m0_g='+safe(m.m0),
@@ -317,8 +317,8 @@ function exportCsv(){
     '# event_mode='+str(state.eventMode||m.eventMode),
     '# analysis_from_s='+safe(m.analysisFrom),
     '# prebuffer_s=5'
-  ].join('\\n')+'\\n';
-  const body='t_s;m_g;dm_g\\n'+state.run.map(r=>r.t.toFixed(3)+';'+r.mass.toFixed(2)+';'+(Number.isFinite(r.dm)?r.dm.toFixed(3):'')).join('\\n');
+  ].join('\n')+'\n';
+  const body='t_s;m_g;dm_g\n'+state.run.map(r=>r.t.toFixed(3)+';'+r.mass.toFixed(2)+';'+(Number.isFinite(r.dm)?r.dm.toFixed(3):'')).join('\n');
   const blob=new Blob([meta+body],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='waage_lab_'+new Date().toISOString().slice(0,19).replaceAll(':','-')+'.csv';
