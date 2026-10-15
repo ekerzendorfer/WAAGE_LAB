@@ -73,7 +73,11 @@ function updateM0(){
 ['waterMass','temperature','tabletForm','preset','note'].forEach(id=>$(id).addEventListener('input',updateConditionsSummary));
 $('analysisFrom').addEventListener('input',()=>{
   const n=asNumber('analysisFrom');state.analysisFrom=Number.isFinite(n)?Math.min(30,Math.max(0,n)):5;
-  if(state.run.length)analyze();updateConditionsSummary();drawAll();
+  if(state.run.length){
+    if(state.runMeta)state.runMeta.analysisFrom=state.analysisFrom;
+    analyze();
+  }
+  updateConditionsSummary();drawAll();
 });
 
 function savePrediction(){
@@ -140,6 +144,7 @@ async function readSerialLoop(){
 
 async function disconnectSerial(){
   state.reading=false;
+  if(state.running)stopRun();
   try{ if(state.reader) await state.reader.cancel(); }catch{}
   try{ if(state.port) await state.port.close(); }catch{}
   state.port=null; $('connectSerial').disabled=false; $('disconnectSerial').disabled=true; $('serialMeta').textContent='nicht verbunden';
@@ -250,6 +255,7 @@ function metricsForRun(points, from=0){
 function analyze(){
   const a=metricsForRun(state.run,state.analysisFrom);
   $('aFinal').textContent=Number.isFinite(a.final)?fmt(a.final)+' g'+(!a.plateau?'*':''):'–';
+  $('aFinal').title=a.plateau?'Endphase gemäß einfacher 0,02-g-Prüfung stabil':'* Endphase nicht nachgewiesen: Δm∞ ist vorläufig';
   $('aT50').textContent=Number.isFinite(a.t50)?fmt(a.t50,1)+' s':'–';
   $('aT90').textContent=Number.isFinite(a.t90)?fmt(a.t90,1)+' s':'–';
   $('aT95').textContent=Number.isFinite(a.t95)?fmt(a.t95,1)+' s':'–';
@@ -261,7 +267,9 @@ async function loadDemo(){
     const txt=await fetch('data/brause_run03.csv').then(r=>{if(!r.ok)throw new Error('Demo-Datei nicht gefunden');return r.text();});
     $('baselineMass').value='195.42';$('tabletMass').value='6.13';updateM0();
     state.run=txt.trim().split(/\r?\n/).slice(1).map(line=>{const [t,m,dm]=line.split(';').map(Number);return{t,mass:m,dm,epochMs:null};});
-    state.source='demo';state.eventMode='Demodaten – Einwurfmarker unbekannt';state.eventEpoch=null;state.running=false;state.runMeta=readConditions();$('runStatus').textContent='Realer Probelauf 03 geladen (14.10.2026).';$('exportCsv').disabled=false;$('makeAiPackage').disabled=false;updateRunUI();analyze();switchView('measure');
+    state.source='demo';state.eventMode='Demodaten – Einwurfmarker unbekannt';state.eventEpoch=null;
+    state.running=false;state.waitingForSample=false;state.runMeta=readConditions();
+    $('startRun').disabled=false;$('markThrow').disabled=true;$('stopRun').disabled=true;$('runStatus').textContent='Realer Probelauf 03 geladen (14.10.2026).';$('exportCsv').disabled=false;$('makeAiPackage').disabled=false;updateRunUI();analyze();switchView('measure');
   }catch(err){$('runStatus').textContent=err.message;}
 }
 $('loadDemo').addEventListener('click',loadDemo);
@@ -290,7 +298,8 @@ $('logFile').addEventListener('change',async(e)=>{
     }
     const window=parsed.filter(x=>x.epochMs>=eventTime-5000);
     state.run=window.map(x=>({t:(x.epochMs-eventTime)/1000,mass:x.mass,dm:state.m0-x.mass,epochMs:x.epochMs}));
-    state.source='log';state.running=false;state.eventEpoch=eventTime;state.eventMode=mode;
+    state.source='log';state.running=false;state.waitingForSample=false;
+    state.eventEpoch=eventTime;state.eventMode=mode;
     state.runMeta=readConditions();$('startRun').disabled=false;$('markThrow').disabled=true;$('stopRun').disabled=true;
     $('runStatus').textContent=window.length+' Log-Werte importiert; '+mode+'. Vorlauf bis 5 s erhalten. Einwurfzeit bitte kritisch prüfen.';
     $('exportCsv').disabled=window.length<5;$('makeAiPackage').disabled=window.length<5;
