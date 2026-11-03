@@ -8,6 +8,24 @@ WAAGE_LAB ist eine browserbasierte Messumgebung für den Chemieunterricht. Ausga
 
 Die KI misst nichts, filtert keine Rohdaten und berechnet keine Kennwerte, die deterministisch in der App berechnet werden können. Sie wird erst danach eingesetzt, um Schlussfolgerungen zu prüfen, Messgrenzen sichtbar zu machen und Transferfragen zu erzeugen.
 
+## v0.2.1 Forschungsmodell – Mivolis Vitamin C (experimentelle Vorschau)
+
+**Optionale Erweiterung auf dem Entwicklungszweig `feature/waage-lab-v0.2`.**
+Die stabilen Web-Serial-, Vorlauf-/Einwurfmarker-, CSV-, Auswertungs- und Vergleichsfunktionen aus v0.2 bleiben erhalten.
+
+- Neues Feld **Tablettenprodukt**: bisherige Tabletten (Standard) oder **Mivolis Vitamin C**.
+- Mivolis-Modell nur bei expliziter Produktauswahl; die tatsächlich gewogene Tablettenmasse ist weiterhin maßgeblich.
+- Transparente **bedingt maximale** CO₂-Menge aus der Salzdeklaration (20,2 g je 100 g; nur unter Annahme, dass alles Natrium aus NaHCO₃ stammt).
+- Experimentelles **Weibull-/Henry-/Retentions-Szenario**: gesonderte Kurven für modelliert gebildetes, gelöstes und ausgetretenes CO₂ sowie Overlay einer realen Messung.
+- Einstellbare Hypothesen: Wasservolumen (oder aus gravimetrisch ermittelter Wassermasse), effektiver CO₂-Druckanteil, Retention, Zeitkonstante, Matrixeffekt; NaCl-Gedankenszenario.
+- Eine eventuelle Rückrechnung **wird nicht als chemische Gehaltsbestimmung ausgegeben**, sondern ausdrücklich als bedingtes Modellszenario.
+- Hub-JSON **in die Zwischenablage kopieren**; kein Hub-Upload und keine vermeintliche Cross-Origin-`localStorage`-Übergabe.
+- `tablet_product` wird bei neuen CSVs mit exportiert und beim Laufvergleich als weitere Kontrollvariable geprüft.
+
+**Fachliche Grenzen und alle Modellannahmen:** [FORSCHUNGSMODELL_MIVOLIS.md](FORSCHUNGSMODELL_MIVOLIS.md)
+
+**Zentrale Frage:** Wie weit erklärt eine hypothetische CO₂-Bildung plus begrenzter Gasrückhalt die tatsächlich gemessene Kurve – und welche Teile bleiben mit einer offenen Waage allein ununterscheidbar?
+
 ## v0.2.0 – BrauseLab und Laufvergleich
 
 Die weiter nutzbare v0.1-Grundlage wurde um folgende Funktionen erweitert:
@@ -64,6 +82,7 @@ Mit installiertem Node.js:
 
 ```bash
 node tests/waage_v02.test.js
+node tests/science-model.test.js
 ```
 
 Die Tests prüfen die Verknüpfungen zwischen HTML und JavaScript, die gravimetrische Wassermasse, Schwellenzeiten (einschließlich zu früh überschrittener Schwellen), den CSV-Import und die Kontrollvariablenprüfung. Die **physische Web-Serial-Messung** und der manuelle Einwurfmarker müssen zusätzlich am Gerät geprüft werden.
