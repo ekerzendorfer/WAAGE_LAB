@@ -50,7 +50,7 @@ const invalidEarly=evalIn('metricsForRun(Array.from({length:101},(_,t)=>({t,dm:.
 assert(Number.isNaN(invalidEarly.t50),'Früh überschrittene Schwelle muss n.v. sein');
 assert(Number.isNaN(invalidEarly.t90),'Früh überschrittene Schwelle muss n.v. sein');
 const csv='# WAAGE_LAB v0.2.0\n# m0_g=200\n# temperature_C=22.4\n'+
-  '# water_g=200.0\n# tablet_g=6.13\n# tablet_form=ganz\n# analysis_from_s=5\n'+
+  '# water_g=200.0\n# tablet_g=6.13\n# tablet_product=other\n# tablet_form=ganz\n# analysis_from_s=5\n'+
   't_s;m_g;dm_g\n'+Array.from({length:80},(_,t)=>{
     const dm=t<5?0:.7*(1-Math.exp(-(t-5)/15));
     return t+';'+(200-dm).toFixed(3)+';'+dm.toFixed(3);
