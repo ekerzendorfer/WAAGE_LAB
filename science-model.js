@@ -137,7 +137,8 @@
       $id('researchBaseline').textContent='Modell: NaHCO₃ ≤ '+f(model.theory.nahco3MgUpper/1000,3)+
         ' g (nur wenn alles Natrium aus NaHCO₃ stammt). CO₂-Potential ≤ '+f(model.theory.co2MgUpper/1000,3)+' g. '+
         'Henry-Potential ist eine hypothetische Kapazität, keine Messung des gelösten CO₂.';
-      const exp=state.run.filter(p=>Number.isFinite(p.t)&&p.t>=0&&Number.isFinite(p.dm));
+      const eligible=state.source!=='demo' && state.runMeta?.tabletProduct==='mivolis-c';
+      const exp=eligible?state.run.filter(p=>Number.isFinite(p.t)&&p.t>=0&&Number.isFinite(p.dm)):[];
       const analysis=exp.length>=5?metricsForRun(exp, state.analysisFrom):null;
       const inversion=analysis&&Number.isFinite(analysis.final)?
         WAAGE_SCIENCE.conditionalInversion(analysis.final,exp.at(-1).t,model):null;
@@ -145,7 +146,7 @@
         ? 'Hypothetische Rückrechnung: '+f(inversion.conditionalTotalMg/1000,3)+' g CO₂-Äquivalent, '+
           f(inversion.nahco3EquivalentMg/1000,3)+' g NaHCO₃-Äquivalent. '+
           'Keine tatsächliche Stoffbestimmung: gelöstes CO₂, Spritzer und andere Natriumquellen sind unbekannt.'
-        : 'Nach Import oder Abschluss einer realen Messung erscheint eine ausdrücklich bedingte Rückrechnung.';
+        : state.source==='demo' ? 'Der eingebaute Demolauf stammt von einer anderen Tablette und darf nicht als Mivolis-Messung interpretiert werden.' : 'Nach einer als Mivolis dokumentierten realen Messung erscheint eine ausdrücklich bedingte Rückrechnung.';
       drawModelChart(model, exp);
     } catch(err) {
       model=null;$id('researchStatus').textContent='Modell nicht berechenbar: '+err.message;
@@ -196,7 +197,8 @@
   }
   async function copyHub(){
     if(!model)return;
-    const exp=state.run.filter(p=>Number.isFinite(p.t)&&p.t>=0&&Number.isFinite(p.dm));
+    const eligible=state.source!=='demo' && state.runMeta?.tabletProduct==='mivolis-c';
+    const exp=eligible?state.run.filter(p=>Number.isFinite(p.t)&&p.t>=0&&Number.isFinite(p.dm)):[];
     const analysis=exp.length>=5?metricsForRun(exp,state.analysisFrom):null;
     const inversion=analysis&&Number.isFinite(analysis.final)?
       WAAGE_SCIENCE.conditionalInversion(analysis.final,exp.at(-1).t,model):null;
