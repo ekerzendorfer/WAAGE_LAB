@@ -23,3 +23,18 @@
 @media(max-width:1120px){.compare-controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:960px){.tabs{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:650px){.tabs,.compare-controls{grid-template-columns:1fr 1fr}#compareCanvas{height:330px}.transient-chart canvas{height:190px}}
+
+/* WAAGE_LAB v0.2.1 – isoliertes Mivolis-Forschungsmodul */
+.research-model{margin-top:16px}
+.research-model .panelhead{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.research-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px;margin-bottom:12px}
+.research-controls label{min-width:0;align-content:start;font-size:.88rem}
+.research-controls label input{margin-top:5px}
+.research-check{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--soft)}
+.research-check input{width:18px;height:18px;flex-shrink:0;accent-color:var(--accent)}
+.research-model .chartwrap{margin-top:12px;min-height:410px}
+.research-model canvas{height:370px}
+.research-model .note{max-width:980px}
+.research-model .metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:980px){.research-controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.research-controls,.research-model .metrics{grid-template-columns:1fr}.research-model canvas{height:330px}}
