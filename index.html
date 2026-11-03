@@ -16,7 +16,7 @@
         <p class="subtitle">Preiswerte serielle Waage → reale Messdaten → transparente Auswertung → KI als wissenschaftlicher Coach.</p>
       </div>
       <div class="version">
-        <span class="badge">v0.2.0</span>
+        <span class="badge">v0.2.1 – Forschungsmodell</span>
         <div>Prototyp · BrauseLab</div>
       </div>
     </header>
@@ -49,6 +49,13 @@
                 <option value="brause" selected>Brausetablette – CO₂-Massenverlust</option>
                 <option value="free">Freie Massen-Zeit-Messung</option>
               </select>
+            </label>
+            <label>Tablettenprodukt
+              <select id="tabletProduct">
+                <option value="other" selected>Andere / bisherige Tablette (Zusammensetzung unbekannt)</option>
+                <option value="mivolis-c">Mivolis Vitamin C (dm, Art. 3104290)</option>
+              </select>
+              <span class="note">Mivolis-Forschungsmodell nur beim passenden Produkt. Die reale Tablettenmasse bitte weiterhin einzeln wiegen.</span>
             </label>
             <label>Tablettenmasse / g
               <input id="tabletMass" type="number" min="0" step="0.01" value="6.13" />
@@ -127,6 +134,54 @@
           </div>
         </section>
       </div>
+
+      <section id="researchModel" class="card research-model" aria-label="Mivolis Forschungsmodell">
+        <div class="panelhead split">
+          <h2>Forschungsmodell · Mivolis Vitamin C</h2>
+          <span class="status-chip">Hypothese, noch nicht validiert</span>
+        </div>
+        <div class="panelbody">
+          <div id="researchInactive" class="info">Für das Forschungsmodell zuerst unter <strong>Versuch vorbereiten</strong> das Produkt „Mivolis Vitamin C“ auswählen. Die bisherige freie Schülerprognose bleibt davon unabhängig.</div>
+          <div id="researchBody" hidden>
+            <p class="note">Das Modell übernimmt die tatsächliche Tablettenmasse, Temperatur und Tablettenform aus dem Versuchsaufbau. Es verbindet eine <strong>bedingte NaHCO₃-Stoffmengenobergrenze</strong>, eine <strong>Weibull-Arbeitshypothese</strong> und ein <strong>Henry-Löslichkeitsszenario</strong>. Seine Kurven sind keine Messwerte.</p>
+            <div class="research-controls">
+              <label>Wasservolumen / mL (Modell)
+                <input id="researchVolume" type="number" min="20" max="250" step="1" placeholder="automatisch aus Wassermasse, sonst 200" />
+              </label>
+              <label>Effektiver CO₂-Druck / % des Blasenoberwerts
+                <input id="researchPressure" type="number" min="10" max="100" step="5" value="100" />
+              </label>
+              <label>Retentionsfaktor / %
+                <input id="researchRetention" type="number" min="0" max="100" step="5" value="88" />
+              </label>
+              <label>Geschwindigkeit: τ-Multiplikator
+                <input id="researchTau" type="number" min="0.2" max="5" step="0.05" value="1" />
+              </label>
+              <label>Sechenov-Heuristik (Matrixparameter)
+                <input id="researchMatrix" type="number" min="0" max="0.2" step="0.001" value="0.028" />
+              </label>
+              <label class="research-check">
+                <input id="researchNaCl" type="checkbox" />
+                <span>Szenario: gesättigte NaCl-Lösung (Faktor 0,22; nicht validiert)</span>
+              </label>
+            </div>
+            <div id="researchStatus" class="status-line" aria-live="polite"></div>
+            <div class="metrics">
+              <div class="metric"><div class="mlabel">CO₂-Obergrenze aus Salzlabel</div><div class="mvalue" id="researchTheor">–</div></div>
+              <div class="metric"><div class="mlabel">Modell: maximal zurückgehalten</div><div class="mvalue" id="researchDiss">–</div></div>
+              <div class="metric"><div class="mlabel">Modell: Waagenverlust bei 150 s</div><div class="mvalue" id="researchEscape">–</div></div>
+            </div>
+            <p id="researchBaseline" class="note"></p>
+            <div class="chartwrap"><canvas id="researchCanvas" aria-label="Modellierte CO₂-Bildung, CO₂-Rückhaltung und offene Massenverluste mit realen Messwerten"></canvas></div>
+            <div class="warning"><strong>Wissenschaftliche Grenze:</strong> „gebildet“, „gelöst“ und „ausgetreten“ sind hier <em>hypothetische Modellgrößen</em>. Die Waage misst nur die offene Massenbilanz. Insbesondere sind der effektive CO₂-Partialdruck, die Sechenov-Heuristik und der Blasenrückhalt im konkreten Becher unbekannt. Gesättigte NaCl-Lösung verändert außerdem die Versuchsbedingungen umfassend.</div>
+            <div class="info" id="researchInversion">Nach einer echten Messung erscheint hier eine bedingte Rückrechnung, niemals eine gesicherte Bestimmung des NaHCO₃-Gehalts.</div>
+            <div class="buttons">
+              <button id="researchHubExport" class="secondary" type="button">Modell und Messwerte als Hub-JSON kopieren</button>
+            </div>
+            <div id="researchExportStatus" class="status-line">Nur lokale Zwischenablage, keine automatische Übertragung an einen Hub.</div>
+          </div>
+        </div>
+      </section>
     </section>
 
     <section id="measure" class="view" hidden>
@@ -283,5 +338,6 @@
   </main>
   <script src="app.js"></script>
   <script src="compare.js"></script>
+  <script src="science-model.js"></script>
 </body>
 </html>
