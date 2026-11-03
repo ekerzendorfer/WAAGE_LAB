@@ -43,7 +43,7 @@ function asNumber(id){
 }
 function readConditions(){
   return {
-    preset:$('preset').value, tabletMass:asNumber('tabletMass'), waterMass:asNumber('waterMass'),
+    preset:$('preset').value, tabletProduct:$('tabletProduct').value, tabletMass:asNumber('tabletMass'), waterMass:asNumber('waterMass'),
     beakerMass:asNumber('beakerMass'), temperature:asNumber('temperature'),
     tabletForm:$('tabletForm').value, note:$('note').value.trim(),
     m0:state.m0, analysisFrom:state.analysisFrom,
@@ -52,7 +52,7 @@ function readConditions(){
 }
 function updateConditionsSummary(){
   const c=readConditions(), val=(n,suffix='g')=>Number.isFinite(n)?fmt(n,2)+' '+suffix:'nicht angegeben';
-  $('conditionsSummary').textContent='Versuchsbedingungen: '+c.tabletForm+' · Tablette '+val(c.tabletMass)+
+  $('conditionsSummary').textContent='Versuchsbedingungen: '+(c.tabletProduct==='mivolis-c'?'Mivolis Vitamin C':'Tablettenprodukt unbekannt')+' · '+c.tabletForm+' · Tablette '+val(c.tabletMass)+
     ' · Wasser '+val(c.waterMass)+' · Starttemperatur '+val(c.temperature,'°C')+
     ' · Becher leer '+val(c.beakerMass)+' · Beginn der Kennwertauswertung '+fmt(state.analysisFrom,1)+' s.';
 }
@@ -70,7 +70,7 @@ function updateM0(){
   updateConditionsSummary();
 }
 ['tabletMass','baselineMass','beakerMass'].forEach(id=>$(id).addEventListener('input',updateM0));
-['waterMass','temperature','tabletForm','preset','note'].forEach(id=>$(id).addEventListener('input',updateConditionsSummary));
+['waterMass','temperature','tabletForm','tabletProduct','preset','note'].forEach(id=>$(id).addEventListener('input',updateConditionsSummary));
 $('analysisFrom').addEventListener('input',()=>{
   const n=asNumber('analysisFrom');state.analysisFrom=Number.isFinite(n)?Math.min(30,Math.max(0,n)):5;
   if(state.run.length){
@@ -319,6 +319,7 @@ function exportCsv(){
     '# WAAGE_LAB v0.2.0',
     '# m0_g='+safe(m.m0),
     '# tablet_g='+safe(m.tabletMass),
+    '# tablet_product='+str(m.tabletProduct),
     '# water_g='+safe(m.waterMass),
     '# beaker_mass_g='+safe(m.beakerMass),
     '# temperature_C='+safe(m.temperature),
@@ -342,7 +343,8 @@ function makeAiPackage(){
   const a=analyze(); if(!Number.isFinite(a.final))return;
   const pred=state.prediction?`\nEIGENE PROGNOSE VOR DEM VERSUCH\n- erwartetes Δm∞: ${state.prediction.final.toFixed(2)} g\n- erwartetes t90: ${state.prediction.t90.toFixed(0)} s\n- Begründung: ${state.prediction.reason||'(keine)'}`:'\nEIGENE PROGNOSE VOR DEM VERSUCH\n- keine gespeichert';
   const prompt=`WAAGE_LAB – DATENBASIERTES KI-ANALYSEPAKET\n\nVERSUCH\n- Preset: ${$('preset').selectedOptions[0].textContent}\n- Tablettenmasse: ${$('tabletMass').value||'nicht angegeben'} g\n- Wassermasse: ${$('waterMass').value||'nicht angegeben'} g\n- Starttemperatur: ${$('temperature').value||'nicht angegeben'} °C\n- Tablettenform: ${$('tabletForm').value}\n- Notiz: ${$('note').value||'(keine)'}\n- m0: ${state.m0?.toFixed(2)||'nicht angegeben'} g${pred}\n\nKLASSISCHE AUSWERTUNG DER APP\n- Δm∞ (Median der letzten 5 s): ${a.final.toFixed(3)} g\n- t50: ${Number.isFinite(a.t50)?a.t50.toFixed(1):'n.v.'} s\n- t90: ${Number.isFinite(a.t90)?a.t90.toFixed(1):'n.v.'} s\n- t95: ${Number.isFinite(a.t95)?a.t95.toFixed(1):'n.v.'} s\n- Anzahl Rohmesswerte: ${state.run.length}\n- Einwurfmarker: ${state.eventMode||'nicht dokumentiert'}\n- Kennwerte ausgewertet ab: ${state.analysisFrom.toFixed(1)} s; Frühphase bleibt in den Rohdaten.\n- Endphase ausreichend stabil (Medianvergleich): ${a.plateau?'ja, nach einfacher 0,02-g-Regel':'nicht eindeutig – vorläufiges Δm∞'}\n\nDEIN AUFTRAG ALS WISSENSCHAFTLICHER COACH\n1. Verwende ausschließlich die oben angegebenen Messdaten und Versuchsbedingungen; erfinde keine fehlenden Werte.\n2. Trenne ausdrücklich: Beobachtung – Messwert – Interpretation.\n3. Prüfe, welche Aussage die Massenmessung tatsächlich erlaubt. Sie misst Masse, die das offene System verlässt; sie misst nicht direkt die chemische CO₂-Bildungsrate.\n4. Vergleiche Prognose und Messung, falls eine Prognose vorhanden ist.\n5. Suche mindestens zwei mögliche Störgrößen oder alternative Erklärungen.\n6. Verwechsle eine schnellere Freisetzung nicht mit einer größeren Gesamtmenge.\n7. Stelle zuerst zwei kurze Rückfragen, die zum eigenen Nachdenken zwingen. Gib danach eine knappe, fachlich saubere Interpretation.\n8. Schließe mit einer Transferfrage, die ohne KI beantwortet werden soll.`;
-  $('aiPackage').value=prompt;$('copyAiPackage').disabled=false;$('openChatGPT').disabled=false;
+  const researchInfo=$('tabletProduct').value==='mivolis-c' ? '\n\nFORSCHUNGSMODELL (nicht validiert): Die geschätzte CO₂-Obergrenze aus dem Salzlabel setzt voraus, dass praktisch alles Natrium aus NaHCO₃ stammt. Henry-, Sechenov-, Retentions- und Weibull-Parameter sind modellhafte Hypothesen. Bitte keine bedingte Rückrechnung als experimentell bestimmte Rezeptur ausgeben.' : '';
+  $('aiPackage').value=prompt+researchInfo;$('copyAiPackage').disabled=false;$('openChatGPT').disabled=false;
 }
 $('makeAiPackage').addEventListener('click',makeAiPackage);
 $('copyAiPackage').addEventListener('click',async()=>{await navigator.clipboard.writeText($('aiPackage').value);$('copyAiPackage').textContent='Kopiert';setTimeout(()=>$('copyAiPackage').textContent='Analysepaket kopieren',1200);});
@@ -372,6 +374,7 @@ function drawAll(){
   chart($('liveCanvas'),state.run,predictionPoints(Math.max(120,state.run.at(-1)?.t||0)),{shadeUntil:state.analysisFrom});
   if(typeof drawTransient==='function')drawTransient();
   if(typeof renderComparison==='function'&&!$('compare').hidden)renderComparison();
+  if(window.WAAGE_SCIENCE&&typeof window.WAAGE_SCIENCE.render==='function'&&!$('prediction').hidden)window.WAAGE_SCIENCE.render();
 }
 window.addEventListener('resize',()=>requestAnimationFrame(drawAll));
 
