@@ -71,6 +71,13 @@ function updateM0(){
 }
 ['tabletMass','baselineMass','beakerMass'].forEach(id=>$(id).addEventListener('input',updateM0));
 ['waterMass','temperature','tabletForm','tabletProduct','preset','note'].forEach(id=>$(id).addEventListener('input',updateConditionsSummary));
+$('tabletProduct').addEventListener('change',()=>{
+  if($('tabletProduct').value==='mivolis-c' && $('tabletMass').value==='6.13' && !state.running && state.run.length===0){
+    // Einmaliger Vorschlagswert bei Wechsel vom älteren 6,13-g-Standard.
+    // Niemals einen bereits aufgenommenen oder laufenden Messlauf korrigieren.
+    $('tabletMass').value='4.10';updateM0();
+  }
+});
 $('analysisFrom').addEventListener('input',()=>{
   const n=asNumber('analysisFrom');state.analysisFrom=Number.isFinite(n)?Math.min(30,Math.max(0,n)):5;
   if(state.run.length){
