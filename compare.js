@@ -5,6 +5,7 @@ const comparisonRuns=[];
 const comparisonColors=['#245d83','#bf6334','#38906f','#80549e','#b18c19','#b44368','#417e95','#616b77'];
 const formOptions=['ganz','halbiert','geviertelt','grob zerkleinert','fein zerkleinert','zerkleinert'];
 const comparisonFields={
+  tabletProduct:{label:'Tablettenprodukt',tol:0,unit:''},
   temperature:{label:'Starttemperatur',tol:0.5,unit:'°C'},
   waterMass:{label:'Wassermasse',tol:2,unit:'g'},
   tabletMass:{label:'Tablettenmasse',tol:0.10,unit:'g'},
@@ -49,10 +50,10 @@ function importCsvRun(text,name){
   if(points.at(-1).t-points[0].t<1)throw Error('Zeitachse zu kurz oder ungültig.');
   return buildComparisonRun(name,points,{
     temperature:num(meta.temperature_C),waterMass:num(meta.water_g),tabletMass:num(meta.tablet_g),
-    beakerMass:num(meta.beaker_mass_g),tabletForm:meta.tablet_form||'',
+    beakerMass:num(meta.beaker_mass_g),tabletForm:meta.tablet_form||'',tabletProduct:meta.tablet_product||'',
     note:meta.note||'',eventMode:meta.event_mode||'nicht dokumentiert',
     analysisFrom:Number.isFinite(num(meta.analysis_from_s))?num(meta.analysis_from_s):0,
-    sourceVersion:lines.some(l=>l.includes('v0.2.0'))?'0.2':'0.1/ohne Version',
+    sourceVersion:lines.some(l=>/v0\.2\.[01]/.test(l))?'0.2':'0.1/ohne Version',
     corrected:false
   });
 }
@@ -65,7 +66,7 @@ function currentRunForComparison(){
   const from=Number.isFinite(c.analysisFrom)?c.analysisFrom:state.analysisFrom;
   return buildComparisonRun('Aktueller Messlauf',state.run.map(p=>({t:p.t,dm:p.dm,mass:p.mass})),{
     temperature:c.temperature,waterMass:c.waterMass,tabletMass:c.tabletMass,
-    beakerMass:c.beakerMass,tabletForm:c.tabletForm,note:c.note,
+    beakerMass:c.beakerMass,tabletForm:c.tabletForm,tabletProduct:c.tabletProduct||'',note:c.note,
     eventMode:state.eventMode||'nicht dokumentiert',analysisFrom:from,
     sourceVersion:'0.2',corrected:false
   });
@@ -74,10 +75,10 @@ function compareChanged(){
   const result={changed:[],unchanged:[],unknown:[]};
   for(const [key,def] of Object.entries(comparisonFields)){
     const vals=comparisonRuns.map(r=>valueFor(r.meta,key));
-    if(vals.some(v=>key==='tabletForm'?!v:!Number.isFinite(v))){
+    if(vals.some(v=>(key==='tabletForm'||key==='tabletProduct')?!v:!Number.isFinite(v))){
       result.unknown.push(key);continue;
     }
-    const changed=key==='tabletForm'?new Set(vals).size>1:
+    const changed=(key==='tabletForm'||key==='tabletProduct')?new Set(vals).size>1:
       Math.max(...vals)-Math.min(...vals)>def.tol;
     result[changed?'changed':'unchanged'].push(key);
   }
@@ -120,7 +121,7 @@ function renderComparison(){
     return '<tr><td><span class="key-dot" style="background:'+color+'"></span>'+escapeHtml(r.name)+
       (c.corrected?' <small title="Manuell im Vergleich korrigierte Metadaten">†</small>':'')+'</td>'+
       '<td>'+displayNum(c.temperature,1)+'</td><td>'+displayNum(c.waterMass,2)+'</td>'+
-      '<td>'+displayNum(c.tabletMass,2)+'</td><td>'+select+'</td>'+
+      '<td>'+displayNum(c.tabletMass,2)+'</td><td>'+escapeHtml(c.tabletProduct||'unbekannt')+'</td><td>'+select+'</td>'+
       '<td>'+displayNum(a.final,3)+(a.plateau?'':'*')+'</td>'+
       '<td>'+displayNum(a.t50,1)+'</td><td>'+displayNum(a.t90,1)+'</td>'+
       '<td>'+displayNum(a.t95,1)+'</td><td>'+displayNum(c.analysisFrom,1)+'</td>'+
@@ -258,7 +259,7 @@ function comparisonPrompt(limitsOnly=false){
     const pairs=selected.map(p=>'('+n(p.t,1)+'s; '+n(p.dm,3)+'g)').join(', ');
     return (i+1)+'. '+r.name+
       '\n   Temperatur '+n(m.temperature,1)+' °C; Wasser '+n(m.waterMass)+' g; Tablette '+
-      n(m.tabletMass)+' g; Form '+(m.tabletForm||'fehlt')+
+      n(m.tabletMass)+' g; Produkt '+(m.tabletProduct||'unbekannt')+'; Form '+(m.tabletForm||'fehlt')+
       (m.corrected?' (Form im Vergleich manuell korrigiert)':'')+
       '; Auswertung ab '+n(m.analysisFrom,1)+' s; Marker: '+m.eventMode+
       '\n   Δm∞ '+n(a.final,3)+' g; t50 '+n(a.t50,1)+' s; t90 '+n(a.t90,1)+
